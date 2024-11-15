@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 class ConvNet(nn.Module):
     def __init__(self):
-    super(ConvNet, self).__init__()
+        super(ConvNet, self).__init__()
 
         # Определяем слои сети
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=3, kernel_size=5)  # 3 фильтра размера (5, 5)
@@ -14,6 +14,7 @@ class ConvNet(nn.Module):
 
         self.flatten = nn.Flatten()  # Для преобразования тензора в вектор
 
+        # Размер входа fc1 будет определяться в forward
         self.fc1 = nn.Linear(in_features=5 * 6 * 6, out_features=100)  # 100 нейронов на выходе
         self.fc2 = nn.Linear(in_features=100, out_features=10)  # 10 нейронов на выходе
 
@@ -32,5 +33,8 @@ class ConvNet(nn.Module):
         x = F.relu(x)  # Применяем ReLU к полносвязному слою
         x = self.fc2(x)
 
+        return x  # Не забудьте вернуть выход
+
 def create_model():
     return ConvNet()
+
