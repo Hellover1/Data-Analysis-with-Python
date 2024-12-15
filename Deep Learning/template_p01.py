@@ -1,42 +1,64 @@
 import numpy as np
+import torch
+from torch import nn
+from torch.nn import functional as F
 
-def softmax(vector):
+def encoder_block(in_channels, out_channels, kernel_size=3, padding=1):
     '''
-    vector: np.array of shape (n, m)
-    
-    return: np.array of shape (n, m)
-        Matrix where softmax is computed for every row independently
+    блок, который принимает на вход карты активации с количеством каналов in_channels, 
+    и выдает на выход карты активации с количеством каналов out_channels
+    kernel_size, padding — параметры conv слоев внутри блока
     '''
-    nice_vector = vector - vector.max()
-    exp_vector = np.exp(nice_vector)
-    exp_denominator = np.sum(exp_vector, axis=1)[:, np.newaxis]
-    softmax_ = exp_vector / exp_denominator
-    return softmax_
+    block = nn.Sequential(
+        nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
+        nn.BatchNorm2d(out_channels),
+        nn.ReLU(),
+        nn.MaxPool2d(kernel_size=2, stride=2)  # Уменьшаем размер карты активации в 2 раза
+    )
+    return block
 
-def multiplicative_attention(decoder_hidden_state, encoder_hidden_states, W_mult):
+def decoder_block(in_channels, out_channels, kernel_size=3, padding=1):
     '''
-    decoder_hidden_state: np.array of shape (n_features_dec, 1)
-    encoder_hidden_states: np.array of shape (n_features_enc, n_states)
-    W_mult: np.array of shape (n_features_dec, n_features_enc)
-    
-    return: np.array of shape (n_features_enc, 1)
-        Final attention vector
+    блок, который принимает на вход карты активации с количеством каналов in_channels, 
+    и выдает на выход карты активации с количеством каналов out_channels
+    kernel_size, padding — параметры conv слоев внутри блока
     '''
-    # your code here
-    
-    return attention_vector
+    block = nn.Sequential(
+        nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2),  # Увеличиваем размер карты активации в 2 раза
+        nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding),
+        nn.BatchNorm2d(out_channels),
+        nn.ReLU()
+    )
+    return block
 
-def additive_attention(decoder_hidden_state, encoder_hidden_states, v_add, W_add_enc, W_add_dec):
-    '''
-    decoder_hidden_state: np.array of shape (n_features_dec, 1)
-    encoder_hidden_states: np.array of shape (n_features_enc, n_states)
-    v_add: np.array of shape (n_features_int, 1)
-    W_add_enc: np.array of shape (n_features_int, n_features_enc)
-    W_add_dec: np.array of shape (n_features_int, n_features_dec)
-    
-    return: np.array of shape (n_features_enc, 1)
-        Final attention vector
-    '''
-    # your code here
-    
-    return attention_vector
+class Autoencoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        # Encoder
+        self.encoder = nn.Sequential(
+            encoder_block(3, 64),
+            encoder_block(64, 128),
+            encoder_block(128, 256),
+        )
+
+        # Decoder
+        self.decoder = nn.Sequential(
+            decoder_block(256, 128),
+            decoder_block(128, 64),
+            nn.ConvTranspose2d(64, 3, kernel_size=2, stride=2),  # Последний слой увеличивает размер карты
+            nn.Tanh()  # Для нормализации значений пикселей
+        )
+
+    def forward(self, x):
+        # Downsampling 
+        latent = self.encoder(x)
+
+        # Upsampling
+        reconstruction = self.decoder(latent)
+
+        return reconstruction
+
+
+def create_model():
+    return Autoencoder()
