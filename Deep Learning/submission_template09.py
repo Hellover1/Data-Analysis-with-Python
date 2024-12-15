@@ -1,88 +1,107 @@
 import numpy as np
-import torch
-from torch import nn
-from torch.nn import functional as F
 
-def encoder_block(in_channels, out_channels, kernel_size, padding):
+def softmax(vector):
     '''
-    блок, который принимает на вход карты активации с количеством каналов in_channels, 
-    и выдает на выход карты активации с количеством каналов out_channels
-    kernel_size, padding — параметры conv слоев внутри блока
+    vector: np.array of shape (n, m)
+    
+    return: np.array of shape (n, m)
+        Matrix where softmax is computed for every row independently
     '''
+    nice_vector = vector - vector.max()
+    exp_vector = np.exp(nice_vector)
+    exp_denominator = np.sum(exp_vector, axis=1)[:, np.newaxis]
+    softmax_ = exp_vector / exp_denominator
+    return softmax_
 
-    # Реализуйте блок вида conv -> relu -> max_pooling. 
-    # Параметры слоя conv заданы параметрами функции encoder_block. 
-    # MaxPooling должен быть с ядром размера 2.
-    block = nn.Sequential(
-        # ВАШ КОД ТУТ
-    )
-
-    return block
-
-def decoder_block(in_channels, out_channels, kernel_size, padding):
+def multiplicative_attention(decoder_hidden_state, encoder_hidden_states, W_mult):
     '''
-    блок, который принимает на вход карты активации с количеством каналов in_channels, 
-    и выдает на выход карты активации с количеством каналов out_channels
-    kernel_size, padding — параметры conv слоев внутри блока
+    decoder_hidden_state: np.array of shape (n_features_dec, 1)
+    encoder_hidden_states: np.array of shape (n_features_enc, n_states)
+    W_mult: np.array of shape (n_features_dec, n_features_enc)
+    
+    return: np.array of shape (n_features_enc, 1)
+        Final attention vector
     '''
+    # Преобразуем состояния энкодера с помощью матрицы весов W_mult
+    transformed_encoder_states = np.dot(W_mult, encoder_hidden_states)
 
-    # Реализуйте блок вида conv -> relu -> upsample. 
-    # Параметры слоя conv заданы параметрами функции encoder_block. 
-    # Upsample должен быть со scale_factor=2. Тип upsampling (mode) можно выбрать любым.
-    block = nn.Sequential(
-        # ВАШ КОД ТУТ
-    )
+    # Вычисляем скалярное произведение между состоянием декодера и каждым состоянием энкодера
+    attention_scores = np.dot(decoder_hidden_state.T, transformed_encoder_states)
 
-    return block
+    # Применяем softmax для получения весов
+    weights_vector = softmax(attention_scores)
 
-class UNet(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        '''
-        параметры: 
-            - in_channels: количество каналов входного изображения
-            - out_channels: количество каналов выхода нейросети
-        '''
-        super().__init__()
+    # Вычисляем итоговый attention vector как взвешенную сумму состояний энкодера
+    attention_vector = weights_vector.dot(encoder_hidden_states.T).T
 
-        self.enc1_block = encoder_block(in_channels, 32, 7, 3)
-        self.enc2_block = encoder_block(32, 64, 3, 1)
-        self.enc3_block = encoder_block(64, 128, 3, 1)
+    return attention_vector
 
-        # поймите, какие параметры должны быть у dec1_block, dec2_block и dec3_block
-        # dec1_block должен быть симметричен блоку enc3_block
-        # dec2_block должен быть симметричен блоку enc2_block
-        # но обратите внимание на skip connection между выходом enc2_block и входом dec2_block 
-        # (см что подается на вход dec2_block в функции forward)
-        # какое количество карт активации будет тогда принимать на вход dec2_block?
-        # также обратите внимание на skip connection между выходом enc1_block и входом dec3_block
-        # (см что подается на вход dec3_block в функции forward)
-        # какое количество карт активации будет тогда принимать на вход dec3_block?
-        self.dec1_block = decoder_block(?, ?, 3, 1)
-        self.dec2_block = decoder_block(?, ?, 3, 1)
-        self.dec3_block = decoder_block(?, out_channels, 3, 1)
+def additive_attention(decoder_hidden_state, encoder_hidden_states, v_add, W_add_enc, W_add_dec):
+    '''
+    decoder_hidden_state: np.array of shape (n_features_dec, 1)
+    encoder_hidden_states: np.array of shape (n_features_enc, n_states)
+    v_add: np.array of shape (n_features_int, 1)
+    W_add_enc: np.array of shape (n_features_int, n_features_enc)
+    W_add_dec: np.array of shape (n_features_int, n_features_dec)
+    
+    return: np.array of shape (n_features_enc, 1)
+        Final attention vector
+    '''
+    # Преобразуем состояния энкодера и декодера с помощью весовых матриц
+    transformed_encoder_states = np.dot(W_add_enc, encoder_hidden_states)
+    transformed_decoder_state = np.dot(W_add_dec, decoder_hidden_state)
 
-    def forward(self, x):
+    # Суммируем результаты и применяем tanh
+    combined_states = np.tanh(transformed_encoder_states + transformed_decoder_state)
 
-        # downsampling part
-        enc1 = self.enc1_block(x)
-        enc2 = self.enc2_block(enc1)
-        enc3 = self.enc3_block(enc2)
+    # Применяем скалярное произведение с вектором весов v_add
+    attention_scores = np.dot(v_add.T, combined_states)
 
-        dec1 = self.dec1_block(enc3)
-        # из-за skip connection dec2 должен принимать на вход сконкатенированные карты активации
-        # из блока dec1 и из блока enc2. 
-        # конкатенация делается с помощью torch.cat
-        dec2 = self.dec2_block(torch.cat([dec1, enc2], 1))
-        # из-за skip connection dec3 должен принимать на вход сконкатенированные карты активации
-        # из блока dec2 и из блока enc1. 
-        # конкатенация делается с помощью torch.cat
-        dec3 = self.dec3_block(torch.cat([dec2, enc1], 1))
+    # Применяем softmax для получения весов
+    weights_vector = softmax(attention_scores)
 
-        return dec3
+    # Вычисляем итоговый attention vector как взвешенную сумму состояний энкодера
+    attention_vector = weights_vector.dot(encoder_hidden_states.T).T
 
+    return attention_vector
 
-def create_model(in_channels, out_channels):
-    # your code here
-    # return model instance (None is just a placeholder)
+# Проверка работы для additive attention
+v_add = np.array([[-0.35, -0.58,  0.07,  1.39, -0.79, -1.78, -0.35]]).T
 
-    return UNet(in_channels, out_channels)
+W_add_enc = np.array([
+    [-1.34, -0.1 , -0.38,  0.12, -0.34],
+    [-1.  ,  1.28,  0.49, -0.41, -0.32],
+    [-0.39, -1.38,  1.26,  1.21,  0.15],
+    [-0.18,  0.04,  1.36, -1.18, -0.53],
+    [-0.23,  0.96,  1.02,  0.39, -1.26],
+    [-1.27,  0.89, -0.85, -0.01, -1.19],
+    [ 0.46, -0.12, -0.86, -0.93, -0.4 ]
+])
+
+W_add_dec = np.array([
+    [-1.62, -0.02, -0.39],
+    [ 0.43,  0.61, -0.23],
+    [-1.5 , -0.43, -0.91],
+    [-0.14,  0.03,  0.05],
+    [ 0.85,  0.51,  0.63],
+    [ 0.39, -0.42,  1.34],
+    [-0.47, -0.31, -1.34]
+])
+
+encoder_hidden_states_complex = np.array([
+    [1, 5, 11, 4, -4],
+    [7, 4, 1, 2, 2],
+    [8, 12, 2, 11, 5],
+    [-9, 0, 1, 8, 12]
+]).astype(float).T
+
+decoder_hidden_state = np.array([[1], [0.5], [-1]])
+
+attention_vector = additive_attention(decoder_hidden_state, encoder_hidden_states_complex, v_add, W_add_enc, W_add_dec)
+print("Additive Attention Vector:")
+print(attention_vector)
+
+plt.figure(figsize=(2, 5))
+plt.pcolormesh(attention_vector, cmap='cool')
+plt.colorbar()
+plt.show()
