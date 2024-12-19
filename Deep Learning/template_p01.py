@@ -23,7 +23,8 @@ def multiplicative_attention(decoder_hidden_state, encoder_hidden_states, W_mult
         Final attention vector
     '''
     # your code here
-    
+    softmax_vector = softmax(decoder_hidden_state.T @ W_mult @ encoder_hidden_states)
+    attention_vector = softmax_vector.dot(encoder_hidden_states.T).T
     return attention_vector
 
 def additive_attention(decoder_hidden_state, encoder_hidden_states, v_add, W_add_enc, W_add_dec):
@@ -38,5 +39,6 @@ def additive_attention(decoder_hidden_state, encoder_hidden_states, v_add, W_add
         Final attention vector
     '''
     # your code here
-    
+    softmax_vector = softmax(v_add.T @ np.tanh(W_add_enc @ encoder_hidden_states + W_add_dec @ decoder_hidden_state))
+    attention_vector = softmax_vector.dot(encoder_hidden_states.T).T
     return attention_vector
