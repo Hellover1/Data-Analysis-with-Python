@@ -63,3 +63,4 @@ class Autoencoder(nn.Module):
 
 def create_model():
     return Autoencoder()
+
