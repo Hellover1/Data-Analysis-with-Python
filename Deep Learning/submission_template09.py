@@ -1,34 +1,26 @@
-import numpy as np
+iimport numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 def encoder_block(in_channels, out_channels, kernel_size=3, padding=1):
     '''
-    Создает блок энкодера: conv -> batchnorm -> relu -> conv -> batchnorm -> relu -> max_pooling
+    Создает блок энкодера: conv -> relu -> max_pooling
     '''
     return nn.Sequential(
         nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True),
-        nn.MaxPool2d(kernel_size=2)
+        nn.ReLU(),
+        nn.MaxPool2d(kernel_size=2, stride=2)
     )
 
 def decoder_block(in_channels, out_channels, kernel_size=3, padding=1):
     '''
-    Создает блок декодера: upsample -> conv -> batchnorm -> relu -> conv -> batchnorm -> relu
+    Создает блок декодера: conv -> relu -> upsample
     '''
     return nn.Sequential(
-        nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
         nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True)
+        nn.ReLU(),
+        nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
     )
 
 class UNet(nn.Module):
