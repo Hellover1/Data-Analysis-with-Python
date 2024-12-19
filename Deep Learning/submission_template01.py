@@ -1,15 +1,14 @@
+import numpy as np
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 def encoder_block(in_channels, out_channels, kernel_size=3, padding=1):
     '''
-    Создает блок энкодера: conv -> batchnorm -> relu -> conv -> batchnorm -> relu -> maxpool
+    Создает блок энкодера: conv -> batchnorm -> relu -> max_pooling
     '''
     return nn.Sequential(
         nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding),
         nn.BatchNorm2d(out_channels),
         nn.ReLU(inplace=True),
         nn.MaxPool2d(kernel_size=2)
@@ -17,56 +16,44 @@ def encoder_block(in_channels, out_channels, kernel_size=3, padding=1):
 
 def decoder_block(in_channels, out_channels, kernel_size=3, padding=1):
     '''
-    Создает блок декодера: upsample -> conv -> batchnorm -> relu -> conv -> batchnorm -> relu
+    Создает блок декодера: upsample -> conv -> batchnorm -> relu
     '''
     return nn.Sequential(
         nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
         nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding),
         nn.BatchNorm2d(out_channels),
         nn.ReLU(inplace=True)
     )
 
 class UNet(nn.Module):
     def __init__(self, in_channels, out_channels):
-        super(UNet, self).__init__()
-        self.encoder1 = encoder_block(in_channels, 64)
-        self.encoder2 = encoder_block(64, 128)
-        self.encoder3 = encoder_block(128, 256)
-        self.encoder4 = encoder_block(256, 512)
+        super().__init__()
 
-        self.bottleneck = nn.Sequential(
-            nn.Conv2d(512, 1024, kernel_size=3, padding=1),
-            nn.BatchNorm2d(1024),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(1024, 1024, kernel_size=3, padding=1),
-            nn.BatchNorm2d(1024),
-            nn.ReLU(inplace=True)
-        )
+        self.enc1_block = encoder_block(in_channels, 32, 7, 3)
+        self.enc2_block = encoder_block(32, 64, 3, 1)
+        self.enc3_block = encoder_block(64, 128, 3, 1)
 
-        self.decoder4 = decoder_block(1024 + 512, 512)
-        self.decoder3 = decoder_block(512 + 256, 256)
-        self.decoder2 = decoder_block(256 + 128, 128)
-        self.decoder1 = decoder_block(128 + 64, 64)
-
-        self.final_layer = nn.Conv2d(64, out_channels, kernel_size=1)
+        self.dec1_block = decoder_block(128, 64, 3, 1)
+        self.dec2_block = decoder_block(64 + 64, 32, 3, 1)
+        self.dec3_block = decoder_block(32 + 32, out_channels, 3, 1)
 
     def forward(self, x):
-        enc1 = self.encoder1(x)
-        enc2 = self.encoder2(enc1)
-        enc3 = self.encoder3(enc2)
-        enc4 = self.encoder4(enc3)
+        # downsampling part
+        enc1 = self.enc1_block(x)
+        enc2 = self.enc2_block(enc1)
+        enc3 = self.enc3_block(enc2)
 
-        bottleneck = self.bottleneck(enc4)
+        dec1 = self.dec1_block(enc3)
+        # из-за skip connection dec2 должен принимать на вход сконкатенированные карты активации
+        # из блока dec1 и из блока enc2. 
+        # конкатенация делается с помощью torch.cat
+        dec2 = self.dec2_block(torch.cat([dec1, enc2], 1))
+        # из-за skip connection dec3 должен принимать на вход сконкатенированные карты активации
+        # из блока dec2 и из блока enc1. 
+        # конкатенация делается с помощью torch.cat
+        dec3 = self.dec3_block(torch.cat([dec2, enc1], 1))
 
-        dec4 = self.decoder4(torch.cat([bottleneck, enc4], dim=1))
-        dec3 = self.decoder3(torch.cat([dec4, enc3], dim=1))
-        dec2 = self.decoder2(torch.cat([dec3, enc2], dim=1))
-        dec1 = self.decoder1(torch.cat([dec2, enc1], dim=1))
-
-        return self.final_layer(dec1)
+        return dec3
 
 def create_model(in_channels, out_channels):
     '''
