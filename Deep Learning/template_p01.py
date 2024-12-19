@@ -3,7 +3,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-ef encoder_block(in_channels, out_channels, kernel_size, padding):
+# Encoder block function
+def encoder_block(in_channels, out_channels, kernel_size, padding):
     block = nn.Sequential(
         nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding),
         nn.BatchNorm2d(out_channels),
@@ -12,6 +13,7 @@ ef encoder_block(in_channels, out_channels, kernel_size, padding):
     )
     return block
 
+# Decoder block function
 def decoder_block(in_channels, out_channels, kernel_size, padding):
     block = nn.Sequential(
         nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=2, padding=padding, output_padding=1),
@@ -20,16 +22,19 @@ def decoder_block(in_channels, out_channels, kernel_size, padding):
     )
     return block
 
+# Autoencoder model
 class Autoencoder(nn.Module):
     def __init__(self):
         super().__init__()
 
-         self.encoder = nn.Sequential(
+        # Encoder
+        self.encoder = nn.Sequential(
             encoder_block(3, 64, 3, 1),
             encoder_block(64, 128, 3, 1),
             encoder_block(128, 256, 3, 1)
         )
 
+        # Decoder
         self.decoder = nn.Sequential(
             decoder_block(256, 128, 3, 1),
             decoder_block(128, 64, 3, 1),
@@ -38,16 +43,14 @@ class Autoencoder(nn.Module):
         )
 
     def forward(self, x):
-
-        # downsampling 
+        # Downsampling (encoder)
         latent = self.encoder(x)
 
-        # upsampling
+        # Upsampling (decoder)
         reconstruction = self.decoder(latent)
 
         return reconstruction
 
-
-
+# Function to create the model
 def create_model():
     return Autoencoder()
